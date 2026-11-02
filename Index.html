@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador: Factorización por Modelo de Áreas</title>
+    <style>
+        :root {
+            /* Colores educativos y diferenciados para cada tipo de ficha */
+            --c-1: #fde047;    /* 1 - Amarillo */
+            --c-a2: #60a5fa;   /* a^2 - Azul */
+            --c-b2: #f87171;   /* b^2 - Rojo */
+            --c-ab: #34d399;   /* ab - Verde */
+            --c-a: #a8a29e;    /* a - Gris/Plateado */
+            --c-b: #fb923c;    /* b - Naranja */
+            --bg-app: #f8fafc;
+            --text-main: #0f172a;
+        }
+
+        * { box-sizing: border-box; }
+
+        body { 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            margin: 0; 
+            display: flex; 
+            height: 100vh; 
+            background: var(--bg-app);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        /* Panel Lateral (Paleta y Controles) */
+        #sidebar { 
+            width: 340px; 
+            background: white; 
+            padding: 20px; 
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05); 
+            display: flex; 
+            flex-direction: column; 
+            z-index: 10; 
+            overflow-y: auto;
+        }
+
+        h2 { font-size: 1.2rem; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        
+        .palette-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px; 
+            margin-bottom: 25px; 
+        }
+
+        .btn-add { 
+            padding: 15px 10px; 
+            border: 2px solid transparent; 
+            border-radius: 8px; 
+            font-weight: bold; 
+            font-size: 1.1rem;
+            cursor: pointer; 
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-add:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.15); }
+        .btn-add:active { transform: translateY(0); }
+        
+        .btn-add[data-type="1"] { background: var(--c-1); color: #854d0e; }
+        .btn-add[data-type="a2"] { background: var(--c-a2); color: white; }
+        .btn-add[data-type="b2"] { background: var(--c-b2); color: white; }
+        .btn-add[data-type="ab"] { background: var(--c-ab); color: #064e3b; }
+        .btn-add[data-type="a"] { background: var(--c-a); color: white; }
+        .btn-add[data-type="b"] { background: var(--c-b); color: white; }
+
+        /* Panel de Acciones de Ficha */
+        #actions-panel { 
+            background: #f1f5f9; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 25px; 
+            display: none; 
+            border: 1px solid #e2e8f0;
+        }
+        #actions-panel p { margin: 0 0 10px 0; font-size: 0.9rem; font-weight: bold; color: #475569; }
+        .action-btn { 
+            width: 100%; padding: 10px; margin-bottom: 8px; cursor: pointer; 
+            border: 1px solid #cbd5e1; border-radius: 6px; background: white; font-weight: 600; 
+        }
+        .action-btn:hover { background: #e2e8f0; }
+        .action-btn.delete { color: #dc2626; border-color: #fca5a5; }
+        .action-btn.delete:hover { background: #fee2e2; }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Panel de Resultados Matemáticos */
+        #stats-panel { 
+            background: #f8fafc; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #e2e8f0;
+            flex-grow: 1;
+        }
+        .stat-box { margin-bottom: 15px; }
+        .stat-box:last-child { margin-bottom: 0; }
+        .stat-box strong { display: block; color: #64748b; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;}
+        .val { font-weight: bold; font-size: 1.2rem; word-break: break-all; }
+        .val.success { color: #16a34a; }
+        .val.error { color: #dc2626; }
+
+        /* Lienzo de Trabajo */
+        #workspace-container { 
+            flex-grow: 1; 
+            position: relative; 
+            overflow: auto; 
+            background: #e2e8f0;
+        }
+        
+        #workspace { 
+            width: 3000px; 
+            height: 3000px; 
+            background-color: white; 
+            position: relative; 
+            /* Cuadrícula de 10x10 px para guiar el snap-to-grid */
+            background-image: linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px);
+            background-size: 10px 10px;
+        }
+        
+        /* Fichas en el lienzo */
+        .tile { 
+            position: absolute; 
+            border: 2px solid rgba(0,0,0,0.5); 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            font-weight: bold; 
+            font-size: 1.2rem;
+            cursor: grab; 
+            user-select: none; 
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.15); 
+            transition: box-shadow 0.2s;
+        }
+        .tile.selected { 
+            border: 3px dashed #0f172a; 
+            box-shadow: 0 0 15px rgba(0,0,0,0.4); 
+            z-index: 100 !important; 
+        }
+        .tile:active { cursor: grabbing; box-shadow: 4px 4px 10px rgba(0,0,0,0.2); }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; height: 50vh; border-bottom: 2px solid #cbd5e1; }
+            #workspace-container { height: 50vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>Fichas de Áreas</h2>
+        <div class="palette-grid">
+            <button class="btn-add" data-type="a2">a²</button>
+            <button class="btn-add" data-type="ab">ab</button>
+            <button class="btn-add" data-type="b2">b²</button>
+            <button class="btn-add" data-type="a">a</button>
+            <button class="btn-add" data-type="b">b</button>
+            <button class="btn-add" data-type="1">1</button>
+        </div>
+
+        <div id="actions-panel">
+            <p>Ficha Seleccionada</p>
+            <button id="btn-rotate" class="action-btn">⟳ Rotar Ficha</button>
+            <button id="btn-delete" class="action-btn delete">🗑️ Eliminar</button>
+        </div>
+
+        <h2>Análisis Polinómico</h2>
+        <div id="stats-panel">
+            <div class="stat-box">
+                <strong>Polinomio (Área Total)</strong>
+                <div id="poly-out" class="val">0</div>
+            </div>
+            <div class="stat-box">
+                <strong>¿Es Factorizable? (Rectángulo)</strong>
+                <div id="status-out" class="val" style="font-size: 1rem; color: #64748b;">Agrega fichas al lienzo</div>
+            </div>
+            <div class="stat-box">
+                <strong>Base</strong>
+                <div id="base-out" class="val">-</div>
+            </div>
+            <div class="stat-box">
+                <strong>Altura</strong>
+                <div id="height-out" class="val">-</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="workspace-container">
+        <div id="workspace"></div>
+    </div>
+
+    <script>
+        /**
+         * Dimensiones base (múltiplos de 10 para ajustar a la cuadrícula):
+         * 1 = 50px
+         * a = 130px
+         * b = 90px
+         * Usar medidas independientes evita ambigüedades matemáticas al calcular la base y altura.
+         */
+        const config = {
+            '1':  { label: '1',  color: 'var(--c-1)',  w: 50,  h: 50,  term: '1' },
+            'a2': { label: 'a²', color: 'var(--c-a2)', w: 130, h: 130, term: 'a^2' },
+            'b2': { label: 'b²', color: 'var(--c-b2)', w: 90,  h: 90,  term: 'b^2' },
+            'ab': { label: 'ab', color: 'var(--c-ab)', w: 130, h: 90,  term: 'ab' },
+            'a':  { label: 'a',  color: 'var(--c-a)',  w: 130, h: 50,  term: 'a' },
+            'b':  { label: 'b',  color: 'var(--c-b)',  w: 90,  h: 50,  term: 'b' }
+        };
+
+        let tiles = [];
+        let selectedTile = null;
+        let tileIdCounter = 0;
+
+        const workspace = document.getElementById('workspace');
+        const workspaceContainer = document.getElementById('workspace-container');
+        const actionsPanel = document.getElementById('actions-panel');
+        const btnRotate = document.getElementById('btn-rotate');
+        const btnDelete = document.getElementById('btn-delete');
+        
+        const polyOut = document.getElementById('poly-out');
+        const statusOut = document.getElementById('status-out');
+        const baseOut = document.getElementById('base-out');
+        const heightOut = document.getElementById('height-out');
+
+        // Inicializar centrado del lienzo
+        window.onload = () => {
+            workspaceContainer.scrollLeft = (3000 - workspaceContainer.clientWidth) / 2;
+            workspaceContainer.scrollTop = (3000 - workspaceContainer.clientHeight) / 2;
+        };
+
+        // Eventos de botones
+        document.querySelectorAll('.btn-add').forEach(btn => {
+            btn.addEventListener('click', () => addTile(btn.dataset.type));
+        });
+
+        btnRotate.addEventListener('click', () => {
+            if (selectedTile) {
+                let temp = selectedTile.w;
+                selectedTile.w = selectedTile.h;
+                selectedTile.h = temp;
+                updateTileDOM(selectedTile);
+                updateCalculations();
+            }
+        });
+
+        btnDelete.addEventListener('click', () => {
+            if (selectedTile) {
+                workspace.removeChild(selectedTile.el);
+                tiles = tiles.filter(t => t.id !== selectedTile.id);
+                deselectAll();
+                updateCalculations();
+            }
+        });
+
+        workspace.addEventListener('mousedown', (e) => {
+            if (e.target === workspace) deselectAll();
+        });
+
+        function deselectAll() {
+            if (selectedTile) selectedTile.el.classList.remove('selected');
+            selectedTile = null;
+            actionsPanel.style.display = 'none';
+        }
+
+        function addTile(type) {
+            let conf = config[type];
+            let id = 'tile_' + tileIdCounter++;
+            
+            // Aparecer la ficha en el centro visible
+            let startX = workspaceContainer.scrollLeft + workspaceContainer.clientWidth / 2 - conf.w / 2;
+            let startY = workspaceContainer.scrollTop + workspaceContainer.clientHeight / 2 - conf.h / 2;
+
+            // Ajuste magnético a cuadrícula de 10px
+            startX = Math.round(startX / 10) * 10;
+            startY = Math.round(startY / 10) * 10;
+
+            let tile = {
+                id: id,
+                type: type,
+                term: conf.term,
+                w: conf.w,
+                h: conf.h,
+                x: startX,
+                y: startY,
+                el: document.createElement('div')
+            };
+
+            tile.el.className = 'tile';
+            tile.el.style.backgroundColor = conf.color;
+            tile.el.innerHTML = conf.label;
+            
+            // Lógica de Arrastre (Drag & Drop)
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            tile.el.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                deselectAll();
+                selectedTile = tile;
+                tile.el.classList.add('selected');
+                
+                actionsPanel.style.display = 'block';
+                btnRotate.disabled = (tile.w === tile.h); // Solo rotar rectángulos
+
+                isDragging = true;
+                let rect = tile.el.getBoundingClientRect();
+                
+                // Traer al frente
+                workspace.appendChild(tile.el);
+                
+                // Zoom fix y offset
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                let wsRect = workspace.getBoundingClientRect();
+                
+                let newX = e.clientX - wsRect.left - offsetX;
+                let newY = e.clientY - wsRect.top - offsetY;
+
+                // Limitar a los bordes
+                tile.x = Math.max(0, Math.min(newX, workspace.offsetWidth - tile.w));
+                tile.y = Math.max(0, Math.min(newY, workspace.offsetHeight - tile.h));
+                
+                updateTileDOM(tile);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    // Snap-to-grid final de 10px para asegurar uniones perfectas
+                    tile.x = Math.round(tile.x / 10) * 10;
+                    tile.y = Math.round(tile.y / 10) * 10;
+                    updateTileDOM(tile);
+                    updateCalculations();
+                }
+            });
+
+            tiles.push(tile);
+            workspace.appendChild(tile.el);
+            updateTileDOM(tile);
+            
+            // Seleccionar automáticamente al crear
+            
+            updateCalculations();
+        }
+
+        function updateTileDOM(tile) {
+            tile.el.style.width = tile.w + 'px';
+            tile.el.style.height = tile.h + 'px';
+            tile.el.style.left = tile.x + 'px';
+            tile.el.style.top = tile.y + 'px';
+            
+            // Ajustar el texto visualmente al rotar
+            tile.el.style.flexDirection = tile.w < tile.h ? 'column' : 'row';
+        }
+
+        function updateCalculations() {
+            if (tiles.length === 0) {
+                polyOut.innerText = '0';
+                statusOut.innerText = 'Agrega fichas al lienzo';
+                statusOut.className = 'val';
+                statusOut.style.color = '#64748b';
+                baseOut.innerText = '-';
+                heightOut.innerText = '-';
+                return;
+            }
+
+            let counts = { 'a^2': 0, 'b^2': 0, 'ab': 0, 'a': 0, 'b': 0, '1': 0 };
+            let totalPixelArea = 0;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+            tiles.forEach(t => {
+                counts[t.term]++;
+                totalPixelArea += t.w * t.h;
+                if (t.x < minX) minX = t.x;
+                if (t.y < minY) minY = t.y;
+                if (t.x + t.w > maxX) maxX = t.x + t.w;
+                if (t.y + t.h > maxY) maxY = t.y + t.h;
+            });
+
+            // 1. Calcular Expresión Polinómica
+            let polyParts = [];
+            if (counts['a^2']) polyParts.push((counts['a^2'] === 1 ? '' : counts['a^2']) + 'a²');
+            if (counts['ab']) polyParts.push((counts['ab'] === 1 ? '' : counts['ab']) + 'ab');
+            if (counts['b^2']) polyParts.push((counts['b^2'] === 1 ? '' : counts['b^2']) + 'b²');
+            if (counts['a']) polyParts.push((counts['a'] === 1 ? '' : counts['a']) + 'a');
+            if (counts['b']) polyParts.push((counts['b'] === 1 ? '' : counts['b']) + 'b');
+            if (counts['1']) polyParts.push(counts['1']);
+            polyOut.innerText = polyParts.join(' + ');
+
+            // 2. Verificar Solapamientos (Overlaps)
+            let overlap = false;
+            for (let i = 0; i < tiles.length; i++) {
+                for (let j = i + 1; j < tiles.length; j++) {
+                    let t1 = tiles[i], t2 = tiles[j];
+                    if (t1.x < t2.x + t2.w && t1.x + t1.w > t2.x &&
+                        t1.y < t2.y + t2.h && t1.y + t1.h > t2.y) {
+                        overlap = true; 
+                        break;
+                    }
+                }
+                if (overlap) break;
+            }
+
+            // 3. Evaluar si es un Rectángulo Perfecto (Factorizable)
+            let boundingBoxArea = (maxX - minX) * (maxY - minY);
+            // Si el área de la caja delimitadora es igual a la suma del área de las piezas y no hay solapamientos, es un rectángulo perfecto.
+            let isRectangle = !overlap && (boundingBoxArea === totalPixelArea) && totalPixelArea > 0;
+
+            if (isRectangle) {
+                statusOut.innerText = "Sí (Es factorizable)";
+                statusOut.className = 'val success';
+                statusOut.style.color = '';
+
+                // Calcular Base (analizando las fichas tocando el borde superior)
+                let topEdgeTiles = tiles.filter(t => t.y === minY);
+                let baseCounts = { 'a': 0, 'b': 0, '1': 0 };
+                topEdgeTiles.forEach(t => {
+                    if (t.w === 130) baseCounts['a']++;
+                    else if (t.w === 90) baseCounts['b']++;
+                    else if (t.w === 50) baseCounts['1']++;
+                });
+                baseOut.innerText = formatDimension(baseCounts);
+
+                // Calcular Altura (analizando las fichas tocando el borde izquierdo)
+                let leftEdgeTiles = tiles.filter(t => t.x === minX);
+                let heightCounts = { 'a': 0, 'b': 0, '1': 0 };
+                leftEdgeTiles.forEach(t => {
+                    if (t.h === 130) heightCounts['a']++;
+                    else if (t.h === 90) heightCounts['b']++;
+                    else if (t.h === 50) heightCounts['1']++;
+                });
+                heightOut.innerText = formatDimension(heightCounts);
+
+            } else {
+                if (overlap) {
+                    statusOut.innerText = "No (Fichas superpuestas)";
+                } else {
+                    statusOut.innerText = "No (Hay huecos o forma irregular)";
+                }
+                statusOut.className = 'val error';
+                statusOut.style.color = '';
+                baseOut.innerText = "-";
+                heightOut.innerText = "-";
+            }
+        }
+
+        // Formatea la expresión algebraica para la base y la altura
+        function formatDimension(counts) {
+            let parts = [];
+            if (counts['a']) parts.push((counts['a'] === 1 ? '' : counts['a']) + 'a');
+            if (counts['b']) parts.push((counts['b'] === 1 ? '' : counts['b']) + 'b');
+            if (counts['1']) parts.push(counts['1']);
+            return parts.join(' + ') || '0';
+        }
+    </script>
+</body>
+</html>
